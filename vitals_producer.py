@@ -28,12 +28,12 @@ RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "3")) # Retry attempts
 RETRY_BACKOFF_FACTOR = float(os.getenv("RETRY_BACKOFF_FACTOR", "2")) # Exponential backoff factor
 
 # SASL Configuration
-sasl_mechanism = 'PLAIN'
+sasl_mechanism = 'SCRAM-SHA-512'
 sasl_plain_username = KAFKA_USERNAME
 sasl_plain_password = KAFKA_PASSWORD
 
 # SSL Configuration (if needed, configure your truststore)
-security_protocol = 'SASL_SSL'
+security_protocol = 'TLSv1.2'
 
 # Create Kafka Producer
 def create_kafka_producer(bootstrap_servers, sasl_mechanism, sasl_plain_username, sasl_plain_password, security_protocol):
