@@ -33,7 +33,7 @@ sasl_plain_username = KAFKA_USERNAME
 sasl_plain_password = KAFKA_PASSWORD
 
 # SSL Configuration (if needed, configure your truststore)
-security_protocol = 'TLSv1.2'
+security_protocol = 'SASL_PLAINTEXT'
 
 # Create Kafka Producer
 def create_kafka_producer(bootstrap_servers, sasl_mechanism, sasl_plain_username, sasl_plain_password, security_protocol):
