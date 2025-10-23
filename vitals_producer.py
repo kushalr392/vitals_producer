@@ -1,108 +1,133 @@
-import os
 import json
-import time
+import os
 import random
-import uuid
+import time
+from datetime import datetime
+
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
-from dotenv import load_dotenv
-import logging
-import sys
-from time import sleep
+from kafka.admin import KafkaAdminClient, NewTopic
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_OUTPUT_TOPIC = os.environ.get("KAFKA_OUTPUT_TOPIC", "vital-signs-topic")
+SASL_USERNAME = os.environ.get("SASL_USERNAME", "user")
+SASL_PASSWORD = os.environ.get("SASL_PASSWORD", "password")
+INTERVAL_MS = int(os.environ.get("INTERVAL_MS", "1000"))  # milliseconds
+DLQ_TOPIC = os.environ.get("KAFKA_DLQ_TOPIC", "vital-signs-dlq")
+RETRY_COUNT = int(os.environ.get("RETRY_COUNT", "3"))
+RETRY_BACKOFF_MS = int(os.environ.get("RETRY_BACKOFF_MS", "1000"))
 
-# Configure logging
-logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Configuration from environment variables
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
-KAFKA_USERNAME = os.getenv("SASL_USERNAME")
-KAFKA_PASSWORD = os.getenv("SASL_PASSWORD")
-OUTPUT_TOPIC = os.getenv("KAFKA_OUTPUT_TOPIC")
-# DEAD_LETTER_TOPIC = os.getenv("DEAD_LETTER_TOPIC", "dead_letter_topic")  # Default dead-letter topic
-INTERVAL_MS = int(os.getenv("INTERVAL_MS"))  # Default interval: 1000ms = 1 second
-RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "3")) # Retry attempts
-RETRY_BACKOFF_FACTOR = float(os.getenv("RETRY_BACKOFF_FACTOR", "2")) # Exponential backoff factor
-
-# SASL Configuration
-sasl_plain_username = KAFKA_USERNAME
-sasl_plain_password = KAFKA_PASSWORD
-
-# SSL Configuration (if needed, configure your truststore)
-security_protocol = 'SASL_PLAINTEXT'
-sasl_mechanism = 'SCRAM-SHA-512'
-
-
-# Create Kafka Producer
-def create_kafka_producer(bootstrap_servers, sasl_mechanism, sasl_plain_username, sasl_plain_password, security_protocol):
-    producer = KafkaProducer(
-        bootstrap_servers=bootstrap_servers.split(","),
-        sasl_mechanism=sasl_mechanism,
-        sasl_plain_username=sasl_plain_username,
-        sasl_plain_password=sasl_plain_password,
-        security_protocol=security_protocol,
-        value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-        retries=RETRY_MAX_ATTEMPTS,
-        api_version=(0, 11, 5)
-    )
-    return producer
+def create_kafka_topic(bootstrap_servers, topic_name):
+    """Creates a Kafka topic if it does not exist."""
+    try:
+        admin_client = KafkaAdminClient(
+            bootstrap_servers=bootstrap_servers,
+            client_id='vital-signs-producer-admin'
+        )
+        topic_list = admin_client.list_topics()
+        if topic_name not in topic_list:
+            topic = NewTopic(name=topic_name, num_partitions=1, replication_factor=1)  # Adjust partitions/replication as needed
+            admin_client.create_topics(new_topics=[topic], validate_only=False)
+            print(f"Topic '{topic_name}' created.")
+        else:
+            print(f"Topic '{topic_name}' already exists.")
+    except Exception as e:
+        print(f"Error creating topic: {e}")
 
 
-# Generate random vital signs data
-def generate_vitals():
+def serialize_json(data):
+    try:
+        return json.dumps(data).encode('utf-8')
+    except TypeError as e:
+        print(f"Serialization error: {e}")
+        return None
+
+
+def generate_vital_signs():
+    """Generates realistic vital signs data with occasional unrealistic heart rate/breath values."""
+    body_temp = round(random.uniform(36.0, 39.0), 1)  # Celsius
+    heart_rate = random.randint(60, 100)
+    breaths_per_minute = random.randint(12, 20)
+    systolic_pressure = random.randint(110, 140)
+    diastolic_pressure = random.randint(70, 90)
+    oxygen_saturation = random.randint(95, 100)
+    blood_glucose = random.randint(70, 140)
+
+    # Introduce occasional unrealistic values
+    if random.random() < 0.05:  # 5% chance
+        heart_rate = random.randint(150, 500)  # Very high heart rate
+    if random.random() < 0.05:  # 5% chance
+        breaths_per_minute = random.randint(30, 60) # Very high breath rate
+
     return {
-        "patient_id": str(uuid.uuid4()),
-        "body_temp": round(random.uniform(36.1, 38.3), 1),  # 36.1-38.3 Celsius (97-101 F)
-        "heart_rate": random.randint(60, 100),  # BPM
-        "systolic_pressure": random.randint(90, 140),  # mmHg
-        "diastolic_pressure": random.randint(60, 90),  # mmHg
-        "respiratory_rate": random.randint(12, 20),  # breaths per minute
-        "oxygen_saturation": random.randint(95, 100),  # percentage
-        "blood_glucose": random.randint(70, 140)  # mg/dL
+        "timestamp": datetime.utcnow().isoformat(),
+        "body_temp": body_temp,
+        "heart_rate": heart_rate,
+        "systolic_pressure": systolic_pressure,
+        "diastolic_pressure": diastolic_pressure,
+        "breaths_per_minute": breaths_per_minute,
+        "oxygen_saturation": oxygen_saturation,
+        "blood_glucose": blood_glucose
     }
 
-def send_to_kafka(producer, topic, message):
-    try:
-        producer.send(topic, value=message)
-        logging.info(f"Sent message to topic {topic}: {message}")
-        return True
-    except KafkaError as e:
-        logging.error(f"Failed to send message to topic {topic}: {e}")
-        return False
 
-# def send_to_dead_letter_queue(producer, message, exception):
-#     try:
-#         producer.send(DEAD_LETTER_TOPIC, value={"original_message": message, "error": str(exception)})
-#         logging.warning(f"Sent message to dead-letter topic {DEAD_LETTER_TOPIC}")
-#     except KafkaError as e:
-#         logging.error(f"Failed to send message to dead-letter topic {DEAD_LETTER_TOPIC}: {e}")
+def create_producer():
+    """Creates a Kafka producer with SASL configuration."""
+    return KafkaProducer(
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        security_protocol='SASL_PLAINTEXT',
+        sasl_mechanism='SCRAM-SHA-512',
+        sasl_plain_username=SASL_USERNAME,
+        sasl_plain_password=SASL_PASSWORD,
+        value_serializer=serialize_json,
+        api_version=(0, 11, 5) # Added to resolve broker compatibility issues
+    )
+
+
+def send_to_kafka(producer, topic, message, retry_count=RETRY_COUNT, retry_backoff_ms=RETRY_BACKOFF_MS):
+    """Sends a message to Kafka with retry logic and dead-letter queue."""
+    for attempt in range(retry_count + 1):
+        try:
+            producer.send(topic, message).get(timeout=10)  # Adjust timeout as needed
+            print(f"Message sent to topic {topic}: {message}")
+            return True
+        except KafkaError as e:
+            print(f"Attempt {attempt + 1} failed to send message: {e}")
+            if attempt < retry_count:
+                time.sleep(retry_backoff_ms / 1000)  # Backoff
+            else:
+                print(f"Failed to send message after {retry_count} attempts. Sending to DLQ.")
+                send_to_dlq(producer, message)
+                return False
+    return False
+
+
+def send_to_dlq(producer, message):
+    """Sends a message to the dead-letter queue."""
+    try:
+        producer.send(DLQ_TOPIC, message).get(timeout=10)
+        print(f"Message sent to DLQ topic {DLQ_TOPIC}: {message}")
+    except KafkaError as e:
+        print(f"Failed to send message to DLQ: {e}")
+
 
 def main():
-    producer = create_kafka_producer(KAFKA_BOOTSTRAP_SERVERS, sasl_mechanism, sasl_plain_username, sasl_plain_password, security_protocol)
+    create_kafka_topic(KAFKA_BOOTSTRAP_SERVERS, KAFKA_OUTPUT_TOPIC)
+    create_kafka_topic(KAFKA_BOOTSTRAP_SERVERS, DLQ_TOPIC)
+
+    producer = create_producer()
 
     try:
         while True:
-            vitals_data = generate_vitals()
-            attempt = 0
-            while attempt < RETRY_MAX_ATTEMPTS:
-                if send_to_kafka(producer, OUTPUT_TOPIC, vitals_data):
-                    break
-                else:
-                    attempt += 1
-                    sleep(RETRY_BACKOFF_FACTOR ** attempt)
-            # else:
-            #     logging.error(f"Failed to send message after {RETRY_MAX_ATTEMPTS} attempts. Sending to dead-letter queue.")
-            #     send_to_dead_letter_queue(producer, vitals_data, "Max retries exceeded")
-
-            time.sleep(INTERVAL_MS / 1000)  # Convert milliseconds to seconds
-
+            vital_signs = generate_vital_signs()
+            send_to_kafka(producer, KAFKA_OUTPUT_TOPIC, vital_signs)
+            time.sleep(INTERVAL_MS / 1000)
     except KeyboardInterrupt:
-        logging.info("Shutting down producer...")
+        print("Shutting down producer...")
     finally:
         producer.close()
+
 
 if __name__ == "__main__":
     main()
