@@ -23,17 +23,18 @@ KAFKA_USERNAME = os.getenv("SASL_USERNAME")
 KAFKA_PASSWORD = os.getenv("SASL_PASSWORD")
 OUTPUT_TOPIC = os.getenv("KAFKA_OUTPUT_TOPIC")
 # DEAD_LETTER_TOPIC = os.getenv("DEAD_LETTER_TOPIC", "dead_letter_topic")  # Default dead-letter topic
-INTERVAL_MS = int(os.getenv("INTERVAL_MS", "1000"))  # Default interval: 1000ms = 1 second
+INTERVAL_MS = int(os.getenv("INTERVAL_MS"))  # Default interval: 1000ms = 1 second
 RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "3")) # Retry attempts
 RETRY_BACKOFF_FACTOR = float(os.getenv("RETRY_BACKOFF_FACTOR", "2")) # Exponential backoff factor
 
 # SASL Configuration
-sasl_mechanism = 'SCRAM-SHA-512'
 sasl_plain_username = KAFKA_USERNAME
 sasl_plain_password = KAFKA_PASSWORD
 
 # SSL Configuration (if needed, configure your truststore)
 security_protocol = 'SASL_PLAINTEXT'
+sasl_mechanism = 'SCRAM-SHA-512'
+
 
 # Create Kafka Producer
 def create_kafka_producer(bootstrap_servers, sasl_mechanism, sasl_plain_username, sasl_plain_password, security_protocol):
