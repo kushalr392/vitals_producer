@@ -18,10 +18,10 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Configuration from environment variables
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "my-cluster-kafka-bootstrap.kafka:9092")
-KAFKA_USERNAME = os.getenv("SASL_USERNAME", "71q6je9h6n4wa5796dmfe681n")
-KAFKA_PASSWORD = os.getenv("SASL_PASSWORD", "UEv0VUpA6vosy4xcMh9uPZala9GdZzKq")
-OUTPUT_TOPIC = os.getenv("KAFKA_OUTPUT_TOPIC", "vitals-ml1")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_USERNAME = os.getenv("SASL_USERNAME")
+KAFKA_PASSWORD = os.getenv("SASL_PASSWORD")
+OUTPUT_TOPIC = os.getenv("KAFKA_OUTPUT_TOPIC")
 # DEAD_LETTER_TOPIC = os.getenv("DEAD_LETTER_TOPIC", "dead_letter_topic")  # Default dead-letter topic
 INTERVAL_MS = int(os.getenv("INTERVAL_MS", "1000"))  # Default interval: 1000ms = 1 second
 RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "3")) # Retry attempts
